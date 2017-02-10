@@ -22,12 +22,12 @@ include_recipe 'rundeck::default'
 if node['rundeck']['secret_file'].nil?
   rundeck_secure = data_bag_item(node['rundeck']['rundeck_databag'], node['rundeck']['rundeck_databag_secure'])
   rundeck_users = data_bag_item(node['rundeck']['rundeck_databag'], node['rundeck']['rundeck_databag_users'])
-  rundeck_rdbms = data_bag_item(node['rundeck']['rundeck_databag'], node['rundeck']['rundeck_databag_rdbms'])
+  rundeck_rdbms = data_bag_item(node['rundeck']['rundeck_databag'], node['rundeck']['rundeck_databag_rdbms']) if node['rundeck']['rdbms']['enable']
 else
   rundeck_secret = Chef::EncryptedDataBagItem.load_secret(node['rundeck']['secret_file'])
   rundeck_secure = Chef::EncryptedDataBagItem.load(node['rundeck']['rundeck_databag'], node['rundeck']['rundeck_databag_secure'], rundeck_secret)
   rundeck_users = Chef::EncryptedDataBagItem.load(node['rundeck']['rundeck_databag'], node['rundeck']['rundeck_databag_users'], rundeck_secret)
-  rundeck_rdbms = Chef::EncryptedDataBagItem.load(node['rundeck']['rundeck_databag'], node['rundeck']['rundeck_databag_rdbms'], rundeck_secret)
+  rundeck_rdbms = Chef::EncryptedDataBagItem.load(node['rundeck']['rundeck_databag'], node['rundeck']['rundeck_databag_rdbms'], rundeck_secret) if node['rundeck']['rdbms']['enable']
   rundeck_ldap_databag = Chef::EncryptedDataBagItem.load(node['rundeck']['rundeck_databag'], node['rundeck']['rundeck_databag_ldap'], rundeck_secret)
   rundeck_ldap_bind_dn = rundeck_ldap_databag['binddn']
   rundeck_ldap_bind_pwd = rundeck_ldap_databag['bindpwd']
@@ -189,7 +189,7 @@ template "#{node['rundeck']['configdir']}/rundeck-config.properties" do
   source 'rundeck-config.properties.erb'
   variables(
     rundeck: node['rundeck'],
-    rundeck_rdbms: rundeck_rdbms['rdbms']
+    rundeck_rdbms: node['rundeck']['rdbms']['enable'] ? rundeck_rdbms['rdbms'] : nil
   )
   notifies (node['rundeck']['restart_on_config_change'] ? :restart : :nothing), 'service[rundeck]', :delayed
 end
@@ -268,7 +268,7 @@ bags.each do |project|
   end
 
   cmd = <<-EOH.to_s
-  rd-project -p #{project} -a create \
+  rd projects -p #{project} create \
   --resources.source.1.type=url \
   --resources.source.1.config.includeServerNode=true \
   --resources.source.1.config.generateFileAutomatically=true \
@@ -281,7 +281,7 @@ bags.each do |project|
     code cmd.strip
     # will return 0 if grep matches
     # only run if project does not exist
-    only_if "rd-jobs -p #{project} list 2>&1 | grep -q '^ERROR .*project does not exist'"
+    only_if "rd jobs -p #{project} list 2>&1 | grep -q '^ERROR .*project does not exist'"
 
     retries 5
     retry_delay 15
